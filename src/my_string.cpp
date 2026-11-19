@@ -6,7 +6,7 @@ MyString::MyString() {
     data_ = nullptr;
     size_ = 0;
 }
-
+//拷贝构造
 MyString::MyString(const char* text) {
     if (text != nullptr) {
         size_ = std::strlen(text);
@@ -52,7 +52,7 @@ MyString::~MyString() {
     delete[] data_;
     data_ = nullptr;
 }
-
+//移动构造
 MyString::MyString(MyString&& other) noexcept{
     this->data_=other.data_;
     this->size_=other.size_;

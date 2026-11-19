@@ -2,7 +2,7 @@
 new delete申内存，构造，析构，还内存
 1 allocate deallocate(类型感知)只申内存，还内存
 2 operator new operator delete类似上
-placement 已有内存上构造
+placement 已有内存上构造 new(a)类型(b) 在a位置建一个类型b
 */
 #include<iostream>
 #include<memory>//1
