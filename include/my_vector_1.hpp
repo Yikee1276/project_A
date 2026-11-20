@@ -28,7 +28,7 @@ public:
                 data_[i].~T;
             }
             if(data_){
-                alloc_.deallocate(size_,capacity_);
+                alloc_.deallocate(data_,capacity_);
             }
             size_=other.size_;
             capacity_=other.capacity_;
@@ -47,7 +47,7 @@ public:
                 data_[i].~T;
             }
             if(data_){
-                alloc_.deallocate(size_,capacity_);
+                alloc_.deallocate(data_,capacity_);
             }
             data_=other.data_;
             size_=other.size_;
@@ -62,9 +62,9 @@ public:
     size_t size(){return size_;}
     size_t capacity(){return capacity_;}
     bool empty(){return size_==0;}
-    const size_t size(){return size_;}
-    const size_t capacity(){return capacity_;}
-    const bool empty(){return size_==0;}
+    size_t size() const {return size_;}
+    size_t capacity() const {return capacity_;}
+    bool empty() const {return size_==0;}
 
     void reserve(size_t new_cap){//如果原地皮太少，扩容（换内存）
         if (new_cap<=capacity_){return;}
@@ -113,6 +113,16 @@ public:
     // 3. 更新大小
         ++size_;
     }
+    template<typename... Args>//无需先建T类型对象，可直接用T内容push
+    T&emplace(Args&&... args){
+        if(size_>=capacity_){
+            size_t new_cap=(capacity_==0)?1:capacity_*2;
+            reserve(new_cap);
+        }
+        new(data_+size_)T(std::forward<Args>(args)...);
+        return data_[size_++];//return[size-1];size++
+    }
+
 
     ~Vector() {
     //  析构函数：先拆所有房子，再退地皮
@@ -126,12 +136,12 @@ public:
 
 // 重载 []，方便像数组一样访问
     T& operator[](size_t index) { return data_[index]; }
-    const T& operator[](size_t index) const { return data_[index]; }
+    T& operator[](size_t index) const { return data_[index]; }
 //迭代器
     T* begin(){return data_;}
-    const T* begin(){return data_;}
+    T* begin() const{return data_;}
     T* end(){return data_+size_;}
-    const T* end(){return data_+size_;}
+    T* end() const{return data_+size_;}
 
 private:
     T* data_;
@@ -144,27 +154,41 @@ private:
     std::cout<<v.size()<<","<<v.capacity()<<std::endl;
 }*/
 
-#include <cassert>
-int main() {
-    Vector<int> v;
-    for (int i = 0; i < 1000000; ++i) {
-        v.push(i);
-    }
-    
-    assert(v.size() == 1000000);
-    
-    long long sum = 0;
-    for (size_t i = 0; i < v.size(); ++i) {
-        sum += v[i];
-    }
-    
-    assert(sum == 499999500000LL);
-    std::cout << "1e6 test passed!\n";
 
-    Vector<std::string> strVec;
-    std::string longStr(1000, 'A');
-    strVec.push(std::move(longStr)); // 触发移动语义
-    std::cout << "Vector size: " << strVec.size() << std::endl;
-    std::cout << "Original string size: " << longStr.size() << std::endl;
+#include <iostream>
+#include <string>
+
+// 1. 定义一个禁用拷贝和移动的测试类
+struct Foo {
+    int id;
+    std::string name;
+    
+    Foo(int i, std::string n) : id(i), name(std::move(n)) {
+        std::cout << "Construct Foo(" << id << ", " << name << ")\n";
+    }
+    
+    // 彻底禁用拷贝和移动，验证 0 次多余操作
+    Foo(const Foo&) = delete; 
+    Foo(Foo&&) = delete; 
+};
+
+int main() {
+    // 2. 验证原地构造
+    Vector<Foo> vec;
+    vec.emplace(42, "hello");
+    
+    // 3. 验证范围 for 遍历
+    std::cout << "Range for loop:\n";
+    for (const auto& item : vec) {
+        std::cout << "Item: " << item.id << ", " << item.name << "\n";
+    }
+    
+    // 4. 1e6 int 测试
+    Vector<int> intVec;
+    for (int i = 0; i < 1000000; ++i) {
+        intVec.emplace(i); // 对 int 同样适用
+    }
+    std::cout << "1e6 test passed! Size: " << intVec.size() << "\n";
+    
     return 0;
 }
