@@ -1,6 +1,8 @@
 #include<memory>
 #include<cstddef>
 #include<iostream>
+#include<utility>
+
 template<typename T>
 class Vector{
 
@@ -10,7 +12,7 @@ public:
     Vector(const Vector&other):data_(nullptr),size_(other.size_),capacity_(other.capacity_){
         if(capacity_>0){
             data_=alloc_.allocate(capacity_);
-            for(int i=0;i<size_;i++){
+            for(size_t i=0;i<size_;i++){
                 new(data_+i)T(other.data_[i]);
             }
         }
@@ -23,9 +25,9 @@ public:
     }
 //赋值运算符重载
     Vector& operator=(const Vector&other){
-        if(this!=other){
-            for(int i=0;i<size_;i++){
-                data_[i].~T;
+        if(this!=&other){
+            for(size_t i=0;i<size_;i++){
+                data_[i].~T();
             }
             if(data_){
                 alloc_.deallocate(data_,capacity_);
@@ -33,7 +35,8 @@ public:
             size_=other.size_;
             capacity_=other.capacity_;
             if(capacity_>0){
-                for(int i=0;i<size_;i++){
+                data_=alloc_.allocate(capacity_);
+                for(size_t i=0;i<size_;i++){
                     new(data_+i)T(other.data_[i]);
                 }
             }
@@ -42,9 +45,9 @@ public:
         return *this;
     }
     Vector& operator=(Vector&&other)noexcept{
-        if(this!=other){
-            for(int i=0;i<size_;i++){
-                data_[i].~T;
+        if(this!=&other){
+            for(size_t i=0;i<size_;i++){
+                data_[i].~T();
             }
             if(data_){
                 alloc_.deallocate(data_,capacity_);
@@ -59,9 +62,6 @@ public:
         return*this;
     }
 //功能函数
-    size_t size(){return size_;}
-    size_t capacity(){return capacity_;}
-    bool empty(){return size_==0;}
     size_t size() const {return size_;}
     size_t capacity() const {return capacity_;}
     bool empty() const {return size_==0;}
@@ -87,7 +87,7 @@ public:
         capacity_=new_cap;
     }
 
-    void push(const T& value){
+    void push_back(const T& value){
     //  如果内存满了，扩容，换一块大一倍的地皮
     //  如果是空容器，申请一个地皮
     //  二者条件重合，二合一
@@ -99,7 +99,7 @@ public:
         size_++;
 
     }
-    void push(T&& value)noexcept{
+    void push_back(T&& value)noexcept{
     // 专门处理右值（临时对象）的 push_back
     // 1. 空间不够则扩容（逻辑与左值版本一致）
         if (size_ >= capacity_) {
@@ -114,7 +114,7 @@ public:
         ++size_;
     }
     template<typename... Args>//无需先建T类型对象，可直接用T内容push
-    T&emplace(Args&&... args){
+    T& emplace_back(Args&&... args){
         if(size_>=capacity_){
             size_t new_cap=(capacity_==0)?1:capacity_*2;
             reserve(new_cap);
@@ -136,12 +136,12 @@ public:
 
 // 重载 []，方便像数组一样访问
     T& operator[](size_t index) { return data_[index]; }
-    T& operator[](size_t index) const { return data_[index]; }
+    const T& operator[](size_t index) const { return data_[index]; }
 //迭代器
     T* begin(){return data_;}
-    T* begin() const{return data_;}
+    const T* begin() const{return data_;}
     T* end(){return data_+size_;}
-    T* end() const{return data_+size_;}
+    const T* end() const{return data_+size_;}
 
 private:
     T* data_;
@@ -149,46 +149,80 @@ private:
     size_t capacity_;//地皮个数
     std::allocator<T> alloc_;//地皮管理者 Mr./Mrs.alloc_
 };
-/*int main(){
-    Vector<int> v;
-    std::cout<<v.size()<<","<<v.capacity()<<std::endl;
-}*/
-
 
 #include <iostream>
 #include <string>
 
-// 1. 定义一个禁用拷贝和移动的测试类
+// 1. 定义一个带计数器的测试类
 struct Foo {
     int id;
     std::string name;
+    static int copy_count;
+    static int move_count;
     
-    Foo(int i, std::string n) : id(i), name(std::move(n)) {
-        std::cout << "Construct Foo(" << id << ", " << name << ")\n";
+    Foo(int i, std::string n) : id(i), name(std::move(n)) {}
+    
+    // 拷贝构造（记录次数）
+    Foo(const Foo& other) : id(other.id), name(other.name) {
+        copy_count++;
     }
     
-    // 彻底禁用拷贝和移动，验证 0 次多余操作
-    Foo(const Foo&) = delete; 
-    Foo(Foo&&) = delete; 
+    // 移动构造（记录次数，必须是 noexcept 才能被 move_if_noexcept 优先选中）
+    Foo(Foo&& other) noexcept : id(other.id), name(std::move(other.name)) {
+        move_count++;
+    }
 };
 
+// 初始化静态成员
+int Foo::copy_count = 0;
+int Foo::move_count = 0;
+
 int main() {
-    // 2. 验证原地构造
-    Vector<Foo> vec;
-    vec.emplace(42, "hello");
-    
-    // 3. 验证范围 for 遍历
-    std::cout << "Range for loop:\n";
-    for (const auto& item : vec) {
-        std::cout << "Item: " << item.id << ", " << item.name << "\n";
+    std::cout << "=== 测试 1：emplace_back 原地构造与扩容 ===\n";
+    {
+        Vector<Foo> vec;
+        
+        // 插入第 1 个元素：不触发扩容，原地构造
+        vec.emplace_back(1, "one"); 
+        
+        // 插入第 2 个元素：触发扩容！
+        // 此时旧元素 "one" 会被 move_if_noexcept 移动到新内存（+1 Move）
+        // 新元素 "two" 是原地构造（+0 Move, +0 Copy）
+        vec.emplace_back(2, "two"); 
+        
+        std::cout << "Copies: " << Foo::copy_count << " (预期: 0)\n";
+        std::cout << "Moves: " << Foo::move_count << " (预期: 1)\n";
     }
     
-    // 4. 1e6 int 测试
-    Vector<int> intVec;
-    for (int i = 0; i < 1000000; ++i) {
-        intVec.emplace(i); // 对 int 同样适用
+    // 重置计数器，准备下一轮测试
+    Foo::copy_count = 0;
+    Foo::move_count = 0;
+    
+    std::cout << "\n=== 测试 2：const 对象访问验证 ===\n";
+    {
+        Vector<Foo> vec;
+        vec.emplace_back(10, "const_test");
+        
+        // 创建一个 const 的 Vector 引用
+        const Vector<Foo>& const_vec = vec;
+        
+        // 验证 const 版本的 operator[] 和 begin()
+        // 如果 Bug 2 没修好，这两行会编译报错
+        std::cout << "Const access: " << const_vec[0].id << ", " << const_vec[0].name << "\n";
+        
+        for (const auto& item : const_vec) {
+            std::cout << "Range for: " << item.id << ", " << item.name << "\n";
+        }
     }
-    std::cout << "1e6 test passed! Size: " << intVec.size() << "\n";
+    
+    std::cout << "\n=== 测试 3：1e6 int 压测 ===\n";
+    {
+        Vector<int> intVec;
+        for (int i = 0; i < 1000000; ++i) {
+            intVec.emplace_back(i);
+        }
+        std::cout << "1e6 test passed! Size: " << intVec.size() << "\n";
+    }
     
     return 0;
 }
