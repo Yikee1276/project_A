@@ -23,7 +23,7 @@ public:
         other.capacity_=0;
         other.data_=nullptr;
     }
-//赋值运算符重载
+/*//赋值运算符重载
     Vector& operator=(const Vector&other){
         if(this!=&other){
             for(size_t i=0;i<size_;i++){
@@ -60,6 +60,16 @@ public:
             other.data_=nullptr;
         }
         return*this;
+    }*/
+//Copy and Swap
+    void swap(Vector &other)noexcept{
+        std::swap(data_,other.data_);
+        std::swap(size_,other.size_);
+        std::swap(capacity_,other.capacity_);
+    }
+    Vector& operator=(Vector other){//遇右值移动构造，左值拷贝
+        swap(other);
+        return *this;
     }
 //功能函数
     size_t size() const {return size_;}
@@ -225,4 +235,15 @@ int main() {
     }
     
     return 0;
+
+    std::cout << "\n=== 测试 4：Copy-and-Swap 自赋值验证 ===\n";
+    {
+        Vector<Foo> vec;
+        vec.emplace_back(100, "self_assign");
+        
+        // 极其危险的自赋值操作！旧代码必崩，新代码稳如泰山
+        vec = vec; 
+        
+        std::cout << "Self-assign success! Data: " << vec[0].id << ", " << vec[0].name << "\n";
+    }
 }
