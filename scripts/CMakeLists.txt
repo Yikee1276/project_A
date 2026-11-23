@@ -73,8 +73,15 @@ set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 set(INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 set(BINDINGS_SOURCE ${SRC_DIR}/bindings.cpp)
 
+# 演示程序（各自带 main()，不编进 fast_cpp 模块；可单独 g++ 编译运行）
+set(DEMO_SOURCES
+    ${SRC_DIR}/my_template.cpp
+    ${SRC_DIR}/my_vector_0.cpp
+)
+
 file(GLOB PROJECT_SOURCES CONFIGURE_DEPENDS "${SRC_DIR}/*.cpp")
 list(REMOVE_ITEM PROJECT_SOURCES "${BINDINGS_SOURCE}")
+list(REMOVE_ITEM PROJECT_SOURCES ${DEMO_SOURCES})
 list(SORT PROJECT_SOURCES)
 
 message(STATUS "自动纳入编译的业务源文件：")

@@ -67,6 +67,8 @@ run_valgrind() {
         [ -e "$f" ] || continue
         case "$f" in
             */bindings.cpp) continue ;;
+            */my_template.cpp) continue ;;
+            */my_vector_0.cpp) continue ;;
         esac
         src_files+=("$f")
     done
@@ -80,10 +82,6 @@ run_valgrind() {
     if [ ! -f "$TEST_SRC" ]; then
         echo "  !! 找不到 $TEST_SRC"
         return 1
-    fi
-    if [ ! -f "include/my_vector.hpp" ]; then
-        echo "  !! 提示：include/my_vector.hpp 尚不存在，"
-        echo "     $TEST_SRC 会因缺失头文件而编译失败（等你手写该头文件后自动恢复）。"
     fi
 
     if ! $CXX $CXXFLAGS_DIAG -o "$TEST_BIN" "$TEST_SRC" "${src_files[@]}"; then
