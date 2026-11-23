@@ -1,17 +1,21 @@
 // ===========================================================================
 //  bindings.cpp —— C++ 与 Python 之间的桥
 //
-//  本文件目前只是一副"空骨架"：
-//    * 只注册了模块 fast_cpp 和一个用于冒烟测试的 add()；
-//    * 具体业务类（MyString / MyVector ...）一律不在此处写死，
-//      留给使用者在下方 TODO 区域按需暴露。
+//  本文件把项目里手写的 C++ 类暴露给 Python：
+//    * fast_cpp.add()        —— 冒烟测试函数；
+//    * fast_cpp.IntVector    —— 手写模板类 Vector<int> 的绑定；
+//    * fast_cpp.DoubleVector —— 手写模板类 Vector<double> 的绑定。
 //
-//  为什么保持最小？因为核心 C++ 类由项目作者手写，绑定层不应假设
-//  任何成员函数名、构造签名或返回值类型。
+//  模板类需要为每种具体类型分别做一次 class_ 绑定（见 bind_vector 的实现）。
+//  Vector<T> 的实现位于 include/my_vector_1.hpp（模板实现必须写在头文件里）。
 // ===========================================================================
+
+#include <type_traits>
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>  // 便于以后暴露 std::vector 等 STL 容器（可选）
+
+#include "my_vector_1.hpp"  // 手写容器 Vector<T>
 
 namespace py = pybind11;
 
@@ -20,34 +24,72 @@ int add(int a, int b) {
     return a + b;
 }
 
+// ---------------------------------------------------------------------------
+// 绑定辅助：为手写模板类 Vector<T> 生成通用的 Python 类声明
+//
+// 注意：模板类不能直接 class_<Vector<T>> 泛化注册，
+//       需要在模块初始化时针对具体类型（如 int / double）分别实例化。
+// ---------------------------------------------------------------------------
+template <typename T>
+void bind_vector(py::module_ &m, const char *name) {
+    py::class_<Vector<T>>(m, name)
+        .def(py::init<>())
+        .def("__len__", &Vector<T>::size)
+        .def("size", &Vector<T>::size)
+        .def("capacity", &Vector<T>::capacity)
+        .def("empty", &Vector<T>::empty)
+        .def("reserve",
+             [](Vector<T> &v, size_t new_cap) { v.reserve(new_cap); },
+             py::arg("new_cap"))
+        .def("push_back",
+             [](Vector<T> &v, T value) { v.push_back(value); },
+             py::arg("value"))
+        .def("__getitem__",
+             [](const Vector<T> &v, size_t i) {
+                 if (i >= v.size()) throw py::index_error();
+                 return v[i];
+             },
+             py::arg("i"))
+        .def("__iter__",
+             [](const Vector<T> &v) {
+                 return py::make_iterator(v.begin(), v.end());
+             },
+             py::keep_alive<0, 1>())  // 迭代期间保持 Vector 存活
+        .def_static("from_list",
+                    [](py::iterable seq) {
+                        Vector<T> v;
+                        for (py::handle h : seq) v.push_back(h.cast<T>());
+                        return v;
+                    },
+                    py::arg("values"),
+                    "用 Python 可迭代对象一次性填充一个全新 Vector")
+        .def("to_list",
+             [](const Vector<T> &v) {
+                 py::list out;
+                 for (const auto &x : v) out.append(x);
+                 return out;
+             },
+             "复制为 Python list")
+        .def("sum",
+             [](const Vector<T> &v) {
+                 // 整型累加必须用 64 位，避免 1e5 级数据求和溢出 int32
+                 using SumT = std::conditional_t<std::is_integral_v<T>, long long, T>;
+                 SumT s = 0;
+                 for (const auto &x : v) s += x;
+                 return s;
+             },
+             "在 C++ 侧原生循环求和（绕开 Python 逐元素调用开销，用于性能对比）");
+}
+
 PYBIND11_MODULE(fast_cpp, m) {
-    m.doc() = "fast_cpp —— C++/Python 混合开发模块（骨架，业务绑定待填充）";
+    m.doc() = "fast_cpp —— C++/Python 混合开发模块（手写 Vector<T> 已暴露）";
 
     // ---- 链路冒烟检查 ---------------------------------------------------
     m.def("add", &add, py::arg("a"), py::arg("b"),
           "返回 a + b，仅用于验证模块可正常导入与调用");
     // --------------------------------------------------------------------
 
-    // =====================================================================
-    // TODO: 将你手写的 MyVector 和 MyString 在这里暴露给 Python
-    //
-    // 参考写法（写出你自己的类之后再取消注释并改成实际签名）：
-    //
-    //   #include "my_string.h"
-    //   #include "my_vector.hpp"
-    //
-    //   py::class_<MyString>(m, "MyString")
-    //       .def(py::init<const char *>(), py::arg("text"))
-    //       .def("size", &MyString::size)
-    //       .def("__len__", &MyString::size)
-    //       .def("__repr__", [](const MyString &s) { /* 返回 std::string */ });
-    //
-    //   py::class_<MyVector<int>>(m, "IntVector")
-    //       .def(py::init<>())
-    //       .def("push_back", &MyVector<int>::push_back, py::arg("value"))
-    //       .def("__len__", &MyVector<int>::size);
-    //
-    // 注意：模板类需要为每种具体类型分别做一次 class_ 绑定
-    //       （如 MyVector<int> / MyVector<double>）。
-    // =====================================================================
+    // ---- 手写容器 Vector<T> --------------------------------------------
+    bind_vector<int>(m, "IntVector");
+    bind_vector<double>(m, "DoubleVector");
 }
